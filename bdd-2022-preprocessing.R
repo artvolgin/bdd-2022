@@ -6,10 +6,14 @@ library(sf)
 library(units)
 library(lme4)
 library(gganimate)
+library(magrittr)
 
 
 USERNAME <- Sys.getenv("USERNAME")
 setwd(paste0('C:/Users/', USERNAME, '/YandexDisk/COMPETITIONS/bdd_2022/data'))
+
+#df_results = readRDS('df_results.rds')
+#df_results <- df_results[!is.na(df_results$ego_speed_lag),]
 
 # ------------------------------------------------------------------------------
 # --- Loading and Preprocessing
@@ -52,6 +56,10 @@ df_main <- df_main %>%
 df_main <- df_main %>% select(-c(finishing_place)) # TODO: Remove 'finishing_place' or 'position_at_finish'?
 
 
+df_main_sf <- st_as_sf(x = df_main, coords = c('longitude', 'latitude')) %>%
+  st_set_crs("EPSG:4326")
+
+t1 <- head(df_main_sf)
 
 # ------------------------------------------------------------------------------
 # --- Plots and animation
@@ -91,18 +99,14 @@ animate(anim, width = 720, height = 440, fps = 10, renderer = av_renderer(),
 
 hspeed <- function(p1){st_distance(lag(p1), p1, by_element=TRUE) / 0.25}
 
-
-
 # --- SPEED CALCULATION
-df_main_sf <- st_as_sf(x = df_main, coords = c('longitude', 'latitude')) %>%
-  st_set_crs("EPSG:4326")
 
 
-calculateSpeedEgoAlters <- function(df_main_sf_race, horse_i_id){
+calculateSpeedEgoAlters <- function(df_main_sf_race, id){
 
   # 1. Select one horse as ego
   df_main_sf_race$pov_type <- ifelse(
-    df_main_sf_race$horse_id %in% horse_i_id, 'ego', 'alters')
+    df_main_sf_race$jockey %in% id, 'ego', 'alters')
 
   # 2. Calculate speed for POV horse and for other
   df_result <- df_main_sf_race %>% data.frame() %>%
@@ -111,12 +115,12 @@ calculateSpeedEgoAlters <- function(df_main_sf_race, horse_i_id){
     ungroup()
 
   # Add indication of horse and race
-  df_result$horse_id <- horse_i_id
+  df_result$jockey <- id
   df_result$race_id <- df_main_sf_race$race_id[1]
 
   # To wider
   df_result <- df_result %>%
-    tidyr::pivot_wider(id_cols=c('trakus_index', 'horse_id', 'race_id'),
+    tidyr::pivot_wider(id_cols=c('trakus_index', 'jockey', 'race_id'),
                        names_from='pov_type', values_from = 'speed') %>%
     rename(ego_speed=ego, alters_speed=alters)
 
@@ -130,7 +134,7 @@ calculateSpeedEgoAlters <- function(df_main_sf_race, horse_i_id){
 
 
 # Calculate For all races
-vec_race_ids <- unique(df_main_sf$race_id)[1:50]
+vec_race_ids <- unique(df_main_sf$race_id)
 i <- 1
 list_results <- list()
 for (rc_id in vec_race_ids){
@@ -138,16 +142,16 @@ for (rc_id in vec_race_ids){
   # 1. Select one race and calculate speed for all the horses there
   df_main_sf_race <- df_main_sf %>%
     filter(race_id==rc_id) %>%
-    group_by(horse_id) %>%
+    group_by(jockey) %>%
     arrange(trakus_index) %>%
     mutate(speed=hspeed(geometry)) %>%
     na.omit()
   df_main_sf_race$speed <- as.numeric(df_main_sf_race$speed)
 
-  vec_horse_ids <- unique(df_main_sf_race$horse_id)
-  for (hrs_id in vec_horse_ids){
+  vec_ids <- unique(df_main_sf_race$jockey)
+  for (id in vec_ids){
 
-    list_results[[i]] <- calculateSpeedEgoAlters(df_main_sf_race, horse_i_id = hrs_id)
+    list_results[[i]] <- calculateSpeedEgoAlters(df_main_sf_race, id = id)
     print(i)
     i <- i + 1
 
@@ -156,17 +160,15 @@ for (rc_id in vec_race_ids){
 
 df_results <- data.table::rbindlist(list_results)
 
+# Remove NAs
+df_results <- df_results[!is.na(df_results$ego_speed_lag),]
 
+#saveRDS(df_results, 'df_results.rds')
+#df_results = readRDS('df_results.rds')
 
 # ------------------------------------------------------------------------------
 # --- Modelling
 # ------------------------------------------------------------------------------
-
-# Transform
-df_results$horse_id <- as.factor(df_results$horse_id)
-
-# Remove NAs
-df_results <- df_results[!is.na(df_results$ego_speed_lag),]
 
 
 # Normalise
