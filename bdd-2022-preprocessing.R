@@ -243,13 +243,14 @@ df_ego_alters.model <- df_ego_alters %>%
          trakus_index=as.numeric(scale(trakus_index)))
 
 
-model.1 <- lmer(y_rotated_diff ~ speed_ego + speed_alters + speed_ego_lag +
-                speed_alters_lag + trakus_index + (1 + speed_ego | horse_race_id),
+model.1 <- lmer(y_rotated_diff ~ speed_ego + speed_alters  +
+                trakus_index + (1 + speed_ego | horse_race_id),
                 df_ego_alters.model)
 summary(model.1)
 
 
 df_coeffs <- as.data.frame(ranef(model.1, condVar=F))
+df_coeffs = df_coeffs %>% filter(!term == '(Intercept)')
 
 test <- df_ego_alters %>% filter(horse_race_id=="BEL_2019-09-06_6_3")
 plot(test$trakus_index, test$y_rotated_diff)
@@ -258,7 +259,13 @@ plot(test$trakus_index, test$speed_alters)
 plot(test$trakus_index, test$speed_diff)
 
 
-test <- df_ego_alters %>% filter(horse_race_id=="BEL_2019-09-20_1_7")
+test <- df_ego_alters %>% filter(horse_race_id=="BEL_2019-10-04_3_2")
+plot(test$trakus_index, test$y_rotated_diff)
+plot(test$trakus_index, test$speed_ego)
+plot(test$trakus_index, test$speed_alters)
+plot(test$trakus_index, test$speed_diff)
+
+test <- df_ego_alters %>% filter(horse_race_id=="BEL_2019-05-04_8_5")
 plot(test$trakus_index, test$y_rotated_diff)
 plot(test$trakus_index, test$speed_ego)
 plot(test$trakus_index, test$speed_alters)
