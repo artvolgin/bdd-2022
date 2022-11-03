@@ -6,49 +6,52 @@ library(units)
 library(lme4)
 library(magrittr)
 library(OpenMx)
-#library(umx)
 
 # wd
 USERNAME = Sys.getenv("USERNAME")
 setwd(paste0('C:/Users/', USERNAME, '/YandexDisk/COMPETITIONS/bdd_2022/data'))
 
 # data
-df_ego_alters = readRDS('df_ego_alters.rds')
-df_main.add = readRDS('df_main.add.rds')
-ids = df_main.add %>%
-  select(jockey, horse_id, horse_race_id)
-ids = ids[!duplicated(ids$horse_race_id),]
-length(table(ids$jockey))
-length(table(ids$horse_id))
-length(unique(ids$horse_race_id))
+df_main = readRDS('df_main.rds')
+cor(df_main$trakus_index, df_main$race_distance_pct)
+cor(df_main$trakus_index, df_main$theta_change, use = 'complete.obs')
+cor(df_main$race_distance_pct, df_main$theta, use = 'complete.obs')
+cor(df_main$speed, df_main$speed_env, use = 'complete.obs')
+cor(df_main$accel, df_main$accel_env, use = 'complete.obs')
 
-# adding ids
-df_ego_alters %<>% left_join(ids)
-clusters = as.data.frame(table(df_ego_alters$horse_race_id))
+# filtering active jockeys
+#df_main$jockey_horse_id = paste0(df_main$jockey, '_', df_main$horse_id)
+clusters = as.data.frame(table(df_main$jockey))
 nrow(clusters)
-summary(clusters$Freq)
-clusters$id = 1:nrow(clusters)
 clusters =  clusters  %>%
-  filter(Freq < 300)
-sample = clusters[1:100, c('Var1', 'id')] %>%
-  select(horse_race_id = Var1, id)
+  filter(Freq > 2000) %>%
+  dplyr::select(jockey = Var1)
+#clusters$jockey = as.character(clusters$jockey)
+clusters$id = 1:nrow(clusters)
 
 
 # selecting variables for the modelling
-df = df_ego_alters %>%
+df = df_main %>%
   dplyr::select(jockey,
-                speed_alters,
-                speed_alters_lag,
-                speed_ego,
-                speed_ego_lag,
-                output = y_rotated_diff,
+                speed_env,
+                speed_lag_env,
+                speed,
+                speed_lag,
+                relative_pos = relative_pos,
+                race_distance_pct,
                 trakus_index,
-                output_orig = y_rotated_diff,
+                relative_pos_orig = relative_pos,
+                y_rotated_diff,
                 race_id,
-                speed_diff) %>% na.omit
+                horse_race_id,
+                purse,
+                odds,
+                position_at_finish,
+                theta_change) %>% na.omit %>%
+  dplyr::mutate(speed_diff = speed - speed_env) %>%
+  left_join(clusters, by = 'jockey') %>% na.omit
 
 df = as.data.frame(df)
-#df$id = as.factor(df$id)
 table(df$id)
 length(table(df$id))
 
@@ -58,44 +61,44 @@ df_sum = df %>% group_by(jockey, race_id) %>%
   group_by(jockey) %>% summarise(n = n())
 df %<>% left_join(df_sum)
 
-# filtering negative output
-df[,2:6] = sapply(df[,2:6], as.numeric)
-df$filt = ifelse(df$output < 0, 0, 1)
-# table(df$filt)
-df = df[df$filt > 0,]
-
 # scaling
-df[,2:6] = sapply(df[,2:6], scale)
-
-# not less than 3 races
-df %<>% filter(n>3)
-length(table(df$jockey))
-
-# total n of rows by jockeys and races
-df %<>% group_by(jockey, race_id) %>%
-  mutate(n_rows = n())
-table(df$n_rows)
-hist(df$n_rows)
-df %<>% filter(n_rows > 30) %>% ungroup()
+df[,2:7] = sapply(df[,2:7], as.numeric)
+#df[,2:7] = sapply(df[,2:7], scale)
+summary(df)
 
 # Modelling
 manifestVars = names(df)[2:7]
 numManifest = length(manifestVars)
 numSubjects = length(unique(df$jockey))
 
-keys = cbind.data.frame(jockey = levels(as.factor(df$jockey)), id = 1:numSubjects)
-df %<>% left_join(keys)
-
-df$trakus_index = scale(df$trakus_index)
-
 df = as.data.frame(df)
 df_multilevel = df %>% select(id, all_of(manifestVars))
 table(df_multilevel$id)
 
-# N - number of observations
-# k - number of manifest vars
+# syntax function
+MultilevelOpenmx = function(dat = df_multilevel,
+                            filter_var = 'race_distance_pct',
+                            probability = NULL,
+                            name = NULL){
 
-MultilevelRandEgo = mxModel("MultilevelRandEgo",
+  # filtering
+
+  if (is.null(probability)){
+    dat = dat
+  }
+  else{
+    cut_lower = as.numeric(quantile(dat[,filter_var], probs = probability[1]))
+    cut_upper= as.numeric(quantile(dat[,filter_var], probs = probability[2]))
+
+    dat %<>% filter(!!rlang::sym(filter_var) >= cut_lower &
+                      !!rlang::sym(filter_var) <= cut_upper)
+  }
+
+  # model syntax
+
+  # N - number of observations
+  # k - number of manifest vars
+  multilevel_syntax = mxModel(paste0("multilevel", '_', name),
                            # matrix of random effects for each subject, N x k
                            mxMatrix("Full",
                                     nrow = numSubjects,
@@ -145,7 +148,7 @@ MultilevelRandEgo = mxModel("MultilevelRandEgo",
                                                'cov_input12_t1', NA, 'var_input2_t1',
                                                NA, 'cov_input12_t2', NA, 'var_input2_t2',
                                                NA, NA, NA, NA, 'var_output',
-                                               NA, NA, NA, NA, NA, 'var_trakus'),
+                                               NA, NA, NA, NA, NA, 'var_dist'),
                                     name = "S",
                                     byrow = T
                            ),
@@ -185,163 +188,81 @@ MultilevelRandEgo = mxModel("MultilevelRandEgo",
                            mxAlgebra(Rand[data.id,], name = "randrow"),
                            mxFitFunctionML(),
                            mxExpectationNormal(covariance = "R", means = "M"),
-                           mxData(df_multilevel, type = 'raw')
-)
+                           mxData(dat, type = 'raw')
+                           )
 
-MultilevelRandAlters = mxModel("MultilevelRandAlters",
-                            # matrix of random effects for each subject, N x k
-                            mxMatrix("Full",
-                                     nrow = numSubjects,
-                                     ncol = 2,
-                                     values = c(.5, .5),
-                                     free = T,
-                                     name = "Rand",
-                                     byrow = T
-                            ),
-                            # matrix of regressions, k x k
-                            mxMatrix("Full",
-                                     numManifest,
-                                     numManifest,
-                                     labels = c(NA,NA,NA,NA,NA,'z3',
-                                                'b1',NA,'b4',NA,NA,'z1',
-                                                NA,NA,NA,NA,NA,'z4',
-                                                'b3',NA,'b2',NA,NA,'z2',
-                                                NA,'randrow[1,1]',NA,"b6",NA, NA,
-                                                NA,NA,NA,NA,NA,NA),
-                                     free = c(F,F,F,F,F,T,
-                                              T,F,T,F,F,T,
-                                              F,F,F,F,F,T,
-                                              T,F,T,F,F,T,
-                                              F,F,F,T,F,F,
-                                              F,F,F,F,F,F),
-                                     name = "A",
-                                     byrow = T
-                            ),
-                            # matrix of variance-covariance where covars are 0, k x k
-                            mxMatrix("Symm",
-                                     numManifest,
-                                     numManifest,
-                                     values = c(1,
-                                                0, 1,
-                                                .5, 0, 1,
-                                                0, .5, 0, 1,
-                                                0, 0, 0, 0, 1,
-                                                0, 0, 0, 0, 0, 1),
-                                     free = c(T,
-                                              F, T,
-                                              T, F, T,
-                                              F, T, F, T,
-                                              F, F, F, F, T,
-                                              F, F, F, F, F, T),
-                                     labels = c('var_input1_t1',
-                                                NA, 'var_input1_t2',
-                                                'cov_input12_t1', NA, 'var_input2_t1',
-                                                NA, 'cov_input12_t2', NA, 'var_input2_t2',
-                                                NA, NA, NA, NA, 'var_output',
-                                                NA, NA, NA, NA, NA, 'var_trakus'),
-                                     name = "S",
-                                     byrow = T
-                            ),
-                            # filter matrix = identity since there are no latvars, k x k
-                            mxMatrix("Full",
-                                     numManifest,
-                                     numManifest,
-                                     values = c(1,0,0,0,0,0,
-                                                0,1,0,0,0,0,
-                                                0,0,1,0,0,0,
-                                                0,0,0,1,0,0,
-                                                0,0,0,0,1,0,
-                                                0,0,0,0,0,1),
-                                     free = F,
-                                     byrow = T,
-                                     name = "F"
-                            ),
-                            mxMatrix("Iden",
-                                     numManifest,
-                                     name = "I"),
-                            # solving for covariance matrix
-                            mxAlgebra(F %*% solve(I-A) %*% S %*% t(solve(I-A)) %*% t(F),
-                                      name = "R",
-                                      dimnames = list(manifestVars, manifestVars)
-                            ),
-                            # matrix of random intercepts - fixed to 0, k x 1
-                            mxMatrix("Full",
-                                     nrow = 1,
-                                     ncol = length(manifestVars),
-                                     values = 0,
-                                     free = c(F,T,F,T,F,F),
-                                     labels = c(NA,'mean1',NA,'mean2',"randrow[1,2]", NA),
-                                     dimnames = list(NULL, manifestVars),
-                                     name = "M"
-                            ),
-                            # algebra for extracting random effects
-                            mxAlgebra(Rand[data.id,], name = "randrow"),
-                            mxFitFunctionML(),
-                            mxExpectationNormal(covariance = "R", means = "M"),
-                            mxData(df_multilevel, type = 'raw')
-)
+  return(multilevel_syntax)
+}
 
 # fitting models for random effects
 gc()
-MultilevelRandEgoFit = mxRun(MultilevelRandEgo)
-summary(MultilevelRandEgoFit)
-summaty_list_ego = summary(MultilevelRandEgoFit, verbose = T)
+multilevel_full_syntax = MultilevelOpenmx(name = 'full')
+multilevel_full_fit = mxRun(multilevel_full_syntax)
+summary(multilevel_full_fit)
+summary_list_full = summary(multilevel_full_fit, verbose = T)
 
-MultilevelRandAltersFit = mxRun(MultilevelRandAlters)
-summary(MultilevelRandAltersFit)
-summaty_list_alters = summary(MultilevelRandAltersFit, verbose = T)
+# by parts
 
-# random effects
-
-# ego
-rand_coefs_ego = summaty_list_ego[["parameters"]][1:(2*numSubjects),c(1,5,6)]
-rand_coefs_ego$lower = rand_coefs_ego$Estimate - 1.96*rand_coefs_ego$Std.Error
-rand_coefs_ego$upper = rand_coefs_ego$Estimate + 1.96*rand_coefs_ego$Std.Error
-rand_coefs_ego$rand_intercept = grepl("2]", rand_coefs_ego$name)
-rand_coefs_ego$id = as.numeric(gsub('MultilevelRandEgo.Rand\\[|\\]|,1|,2', '', rand_coefs_ego$name))
-rand_coefs_ego$name = NULL
-rand_coefs_ego %<>% left_join(unique(df[,c('jockey', 'id')]))
-rand_coefs_ego$model = 'ego'
-rand_coefs_ego %<>% arrange(desc(Estimate))
-
-# alters
-rand_coefs_alters = summaty_list_alters[["parameters"]][1:(2*numSubjects),c(1,5,6)]
-rand_coefs_alters$lower = rand_coefs_alters$Estimate - 1.96*rand_coefs_alters$Std.Error
-rand_coefs_alters$upper = rand_coefs_alters$Estimate + 1.96*rand_coefs_alters$Std.Error
-rand_coefs_alters$rand_intercept = grepl("2]", rand_coefs_alters$name)
-rand_coefs_alters$id = as.numeric(gsub('MultilevelRandAlters.Rand\\[|\\]|,1|,2', '', rand_coefs_alters$name))
-rand_coefs_alters$name = NULL
-rand_coefs_alters %<>% left_join(unique(df[,c('jockey', 'id')]))
-rand_coefs_alters$model = 'alters'
+#multilevel_1_syntax = MultilevelOpenmx(name = '1', probability = c(0, .33))
+#multilevel_1_fit = mxRun(multilevel_1_syntax)
+#summary(multilevel_1_fit)
+#summary_list_1 = summary(multilevel_1_fit, verbose = T)
+#
+#multilevel_2_syntax = MultilevelOpenmx(name = '2', probability = c(.4, .6))
+#multilevel_2_fit = mxRun(multilevel_2_syntax)
+#summary(multilevel_2_fit)
+#summary_list_2 = summary(multilevel_2_fit, verbose = T)
+#
+#multilevel_3_syntax = MultilevelOpenmx(name = '3', probability = c(.66, 1))
+#multilevel_3_fit = mxRun(multilevel_3_syntax)
+#summary(multilevel_3_fit)
+#summary_list_3 = summary(multilevel_3_fit, verbose = T)
 
 # fixed effects
+fixed_coefs = summary_list_full[["parameters"]]
+fixed_coefs = fixed_coefs[((2*numSubjects)+1):nrow(fixed_coefs),c(1,5,6)]
+fixed_coefs$lower = fixed_coefs$Estimate - 1.96*fixed_coefs$Std.Error
+fixed_coefs$upper = fixed_coefs$Estimate + 1.96*fixed_coefs$Std.Error
 
-# ego
-fixed_coefs_ego = summaty_list_ego[["parameters"]]
-fixed_coefs_ego = fixed_coefs_ego[((2*numSubjects)+1):nrow(fixed_coefs_ego),c(1,5,6)]
-fixed_coefs_ego$lower = fixed_coefs_ego$Estimate - 1.96*fixed_coefs_ego$Std.Error
-fixed_coefs_ego$upper = fixed_coefs_ego$Estimate + 1.96*fixed_coefs_ego$Std.Error
+# random effects
+rand_extract = function(level_id = 'jockey',
+                        name = NULL,
+                        summary_list = NULL){
 
-# alters
-fixed_coefs_alters = summaty_list_alters[["parameters"]]
-fixed_coefs_alters = fixed_coefs_alters[((2*numSubjects)+1):nrow(fixed_coefs_alters),c(1,5,6)]
-fixed_coefs_alters$lower = fixed_coefs_alters$Estimate - 1.96*fixed_coefs_alters$Std.Error
-fixed_coefs_alters$upper = fixed_coefs_alters$Estimate + 1.96*fixed_coefs_alters$Std.Error
+  rand_coefs = summary_list[["parameters"]][1:(2*numSubjects),c(1,5,6)]
+  rand_coefs$lower = rand_coefs$Estimate - 1.96*rand_coefs$Std.Error
+  rand_coefs$upper = rand_coefs$Estimate + 1.96*rand_coefs$Std.Error
+  rand_coefs$rand_intercept = grepl("2]", rand_coefs$name)
+  rand_coefs$id = as.numeric(gsub(paste0(name,'.Rand\\[|\\]|,1|,2'), '', rand_coefs$name))
+  rand_coefs$name = NULL
+  rand_coefs %<>% left_join(unique(df[,c(level_id, 'id')]), by = 'id')
+  rand_coefs %<>% arrange(desc(Estimate))
+  rand_coefs$model = name
+
+  return(rand_coefs)
+}
+
+rand_coefs_full = rand_extract(name = 'multilevel_full', summary_list = summary_list_full)
+#rand_coefs_1 = rand_extract(name = 'multilevel_1', summary_list = summary_list_1)
+#rand_coefs_2 = rand_extract(name = 'multilevel_2', summary_list = summary_list_2)
+#rand_coefs_3 = rand_extract(name = 'multilevel_3', summary_list = summary_list_3)
+#
+#rand_all = rbind.data.frame(rand_coefs_1,
+#                          rand_coefs_2,
+#                          rand_coefs_3,
+#                          rand_coefs_full)
+#rand_all %<>% na.omit
 
 # plotting random effects
-
-slopes = rbind(rand_coefs_ego[rand_coefs_ego$rand_intercept == FALSE,],
-               rand_coefs_alters[rand_coefs_alters$rand_intercept == FALSE,])
-
-ggplot(data = slopes,
+ggplot(data = rand_coefs_full[rand_coefs_full$rand_intercept == FALSE,],
                 aes(x = Estimate,
                     y = reorder(jockey, Estimate),
                     color = model)) +
   geom_errorbarh(aes(xmin = lower,
                      xmax = upper,
                      height = 0.3),
-                 size=0.75,
-                 color='gray25'#,
+                 size = 0.75,
+                 color = 'gray25' #,
                  #linetype=errorbar_linetype
   ) +
 
@@ -353,173 +274,44 @@ ggplot(data = slopes,
         axis.text.x = element_text(size = 16, face = "bold"))  +
   geom_vline(xintercept = 0, linetype = "dashed", color = "darkgrey", size = 0.4) +
   labs(y = "", x = '')  +
-  xlim(-3, 2) +
+  xlim(0, .18) +
   theme(plot.title = element_text(size=16, face="bold", hjust=0.5),
-        legend.position="bottom") +
+        legend.position = "bottom") +
   ggtitle('Random Effects by Jockeys')
-
-slopes_cor_df = rand_coefs_ego[rand_coefs_ego$rand_intercept == FALSE,
-                               c('jockey', 'Estimate')] %>%
-  select(jockey, Estimate_ego = Estimate) %>%
-  left_join(rand_coefs_alters[rand_coefs_alters$rand_intercept == FALSE,
-                           c('jockey', 'Estimate')])
-cor(slopes_cor_df$Estimate_ego, slopes_cor_df$Estimate)
 
 # inspecting
 
-test = df %>% filter(jockey == 'Darren Nagle')
-test %<>% filter(race_id == names(table(test$race_id)[3]))
-plot(test$trakus_index, test$output_orig)
-plot(test$trakus_index, test$speed_diff)
-plot(test$trakus_index, test$speed_ego)
-plot(test$trakus_index, test$speed_alters)
+slopes = rand_coefs_full[rand_coefs_full$rand_intercept == FALSE,]
 
-#-----------------------------------------------------
-#---------------------- LMER -------------------------
-#-----------------------------------------------------
-hist(df_sum$n, breaks = 100)
+# top jockeys
+jockeys_top = slopes %>%
+  arrange(desc(Estimate)) %>%
+  slice_head(n = 3) %>%
+  pull(jockey)
 
-model_lmer = lmer(output ~ speed_ego + speed_alters + trakus_index + (1 + speed_ego | id), df)
-gc()
-summary(model_lmer)
-performance::icc(model_lmer)
+# bottom jockeys
+jockeys_bottom = slopes %>%
+  arrange(desc(Estimate)) %>%
+  slice_tail(n = 3) %>%
+  pull(jockey)
 
-rand_lmer = as.data.frame(ranef(model_lmer, condVar = T))
-rand_lmer$grp = as.numeric(as.character(rand_lmer$grp))
-rand_lmer$rand_intercept = ifelse(rand_lmer$term == '(Intercept)', 'TRUE_lmer',
-                                  'FALSE_lmer')
-fixed = as.numeric(fixef(model_lmer)[2])
-rand_lmer %<>%
-  select(id = grp,
-         Estimate = condval,
-         Std.Error = condsd,
-         rand_intercept) %>%
-  mutate(upper = fixed + Estimate + 1.96*Std.Error,
-         lower = fixed + Estimate - 1.96*Std.Error,
-         Estimate = fixed + Estimate) %>%
-  left_join(unique(df[, c('id', 'jockey')]))
+# testing top
+n = 1
+test_top = df %>% filter(jockey == !!jockeys_top[n])
+test_top %<>% filter(race_id == names(table(test_top$race_id)[1]))
 
-rand_both_models = plyr::rbind.fill(rand_coefs, rand_lmer)
+plot(test_top$trakus_index, test_top$relative_pos_orig)
+plot(test_top$trakus_index, test_top$speed_diff)
+plot(test_top$trakus_index, test_top$speed)
+plot(test_top$trakus_index, test_top$speed_env)
 
-slopes_both = rand_both_models[rand_both_models$rand_intercept %in% c('FALSE',
-                                                                      'FALSE_lmer') &
-                                 rand_both_models$Estimate<2,]
+# testing bottom
+n = 1
+test_bottom = df %>% filter(jockey == !!jockeys_bottom[n])
+test_bottom %<>% filter(race_id == names(table(test_bottom$race_id)[1]))
 
-ggplot(data = slopes_both,
-  #data = rand_lmer[rand_lmer$rand_intercept == 'FALSE_lmer',],
-       aes(x = Estimate,
-           #y = reorder(jockey, Estimate),
-           y = reorder(slopes_both[rand_intercept == 'FALSE', 'jockey'],
-                       slopes_both[rand_intercept == 'FALSE', 'Estimate']),
-           color = rand_intercept)) +
-  geom_errorbarh(aes(xmin = lower,
-                     xmax = upper,
-                     height = 0.3),
-                 size=0.75#,
-                 #color='gray25'#,
-                 #linetype=errorbar_linetype
-  ) +
-
-  geom_point(pch=21, size=1,
-             position = position_dodge(width = 0.5)) +
-
-  theme_minimal() +
-  theme(axis.text.y = element_text(color = "black", size = 6),
-        axis.text.x = element_text(size = 16, face = "bold"))  +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "darkgrey", size = 0.4) +
-  labs(y = "", x = '')  +
-  xlim(-1.5, 2) +
-  theme(plot.title = element_text(size=16, face="bold", hjust=0.5),
-        legend.position="bottom") +
-  ggtitle('Random Effects by Jockeys')
-
-# correlation between random effects and the number of races for each jockey
-
-rand_lmer %<>% left_join(unique(df[, c('jockey', 'n')]))
-cor(rand_lmer[rand_lmer$rand_intercept == 'FALSE_lmer', 'n'],
-    rand_lmer[rand_lmer$rand_intercept == 'FALSE_lmer', 'Estimate'],
-    method = 'spearman')
-
-# correlation between random effects and average output for each jockey
-temp = df %>% group_by(jockey) %>%
-  summarise(mean_output_orig = mean(output_orig))
-
-rand_lmer %<>% left_join(temp)
-
-cor(rand_lmer[rand_lmer$rand_intercept == 'FALSE_lmer', 'mean_output_orig'],
-    rand_lmer[rand_lmer$rand_intercept == 'FALSE_lmer', 'Estimate'],
-    method = 'spearman')
-
-# explore extremes
-
-rank = 5
-picktop = rand_lmer %>% select(jockey, rand_intercept, Estimate) %>%
-  filter(rand_intercept == 'FALSE_lmer') %>%
-  slice_max(Estimate, n = rank)  %>% pull(jockey)
-picktop = picktop[length(picktop)]
-
-test = df %>% filter(jockey == picktop)
-test %<>% filter(race_id == names(table(test$race_id)[1]))
-plot(test$trakus_index, test$output_orig)
-plot(test$trakus_index, test$speed_diff)
-plot(test$trakus_index, test$speed_ego)
-plot(test$trakus_index, test$speed_alters)
-
-rank = 95
-pickbottom = rand_lmer %>% select(jockey, rand_intercept, Estimate) %>%
-  filter(rand_intercept == 'FALSE_lmer') %>%
-  slice_max(Estimate, n = rank)  %>% pull(jockey)
-pickbottom = pickbottom[length(pickbottom)]
-
-test = df %>% filter(jockey == pickbottom)
-test %<>% filter(race_id == names(table(test$race_id)[1]))
-plot(test$trakus_index, test$output_orig)
-plot(test$trakus_index, test$speed_diff)
-plot(test$trakus_index, test$speed_ego)
-plot(test$trakus_index, test$speed_alters)
-
-
-cor(rand_both_models$Estimate[rand_both_models$rand_intercept == 'FALSE'],
-    rand_both_models$Estimate[rand_both_models$rand_intercept == 'FALSE_lmer'])
-#-----------------------------------------------------------
-#-------------------------- DAGs ---------------------------
-#-----------------------------------------------------------
-
-# plotting relationships with DAGs
-library(ggplot2)
-library(ggdag)
-coord_dag <- list(
-  x = c(speed_alters_lag = -5,
-        speed_ego_lag = -5,
-        speed_alters = 0,
-        speed_ego = 0,
-        output = 5),
-  y = c(speed_alters_lag = 2,
-        speed_ego_lag = -2,
-        speed_alters = 2,
-        speed_ego = -2,
-        output = 0)
-)
-dag <- ggdag::dagify(speed_alters ~ speed_alters_lag,
-                     speed_ego ~ speed_ego_lag,
-                     speed_alters ~ speed_ego_lag,
-                     speed_ego ~ speed_alters_lag,
-                     output ~ speed_alters,
-                     output ~ speed_ego,
-                     coords = coord_dag,
-                     labels = c('speed_alters' = 'Alters Speed',
-                                'speed_alters_lag' = 'Lag of Alters Speed',
-                                'speed_ego' = 'Egos Speed',
-                                'speed_ego_lag' = 'Lag of Egos Speed',
-                                'output' = 'Output'
-
-                     )) %>%
-  tidy_dagitty()
-
-ggdag::ggdag(dag,
-             text = F,
-             use_labels = "label",
-             node_size = 20,
-             text_size = 4) +
-  ggplot2::theme_void()
+plot(test_bottom$trakus_index, test_bottom$relative_pos_orig)
+plot(test_bottom$trakus_index, test_bottom$speed_diff)
+plot(test_bottom$trakus_index, test_bottom$speed)
+plot(test_bottom$trakus_index, test_bottom$speed_env)
 
