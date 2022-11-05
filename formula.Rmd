@@ -30,9 +30,9 @@ $$
 \beta^3_{nj} = \gamma^3_{n0},  \ for\ n ∈ \ {0,1,2}
 $$
 
-where an observation for the individual jockey at a quarter of a second $i$ (across all races) is nested within a jockey $j$, superscripts indicate a model number;
+where an observation for the individual jockey at a quarter of a second $i$ (across all races) is nested within a jockey $j$, superscripts indicate a model number, n is a parameter number;
 
-$\alpha, \beta, \gamma$ with subscripts are regression parameter estimates with $\kappa, \lambda, \delta$ being their jockey-level intercepts;
+all betas are regression parameter estimates with gammas being their jockey-level intercepts;
 
 $u_{0j}$ and $u_{1j}$ are random intercept and slope parameters respectively for the impact of jockeys'/horses' speed on the performance outcome;
 
