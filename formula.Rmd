@@ -5,32 +5,32 @@ output: html_notebook
 
 
 
-1st level
+First level
 
 $$
 Positional \_ Improvement\_\textit{T+1}_{ij} = 
-\alpha_{0j} + \alpha_{1j}*Speed\_\textit{T}_{ij} + \alpha_{2j}*Speed\_of\_Environment \_ \textit{T}_{ij} + \epsilon^\alpha_{ij}
+\beta^1_{0j} + \beta^1_{1j}*Speed\_\textit{T}_{ij} + \beta^1_{2j}*Speed\_of\_Environment \_ \textit{T}_{ij} + \epsilon^{\beta^1}_{ij}
 $$
 
 $$
-Speed\_{T}_{ij} = \beta_{0j} + \beta_{1j}*Speed\_\textit{T-1}_{ij} + \beta_{2j}*Speed\_of\_Environment\_\textit{T-1}_{ij} + Controls_{ij} + \epsilon^\beta_{ij}
+Speed\_{T}_{ij} = \beta^2_{0j} + \beta^2_{1j}*Speed\_\textit{T-1}_{ij} + \beta^2_{2j}*Speed\_of\_Environment\_\textit{T-1}_{ij} + \beta^2_{3j}*Controls_{ij} + \epsilon^{\beta^2}_{ij}
 $$
 
 
 $$
-Speed\_of\_Environment_\_{T}_{ij} = \gamma_{0j} + \gamma_{1j}*Speed\_\textit{T-1}_{ij} + \gamma_{2j}*Speed\_of\_Environment\_\textit{T-1}_{ij} + Controls_{ij} + \epsilon^\gamma_{ij}
+Speed\_of\_Environment_\_{T}_{ij} = \beta^3_{0j} + \beta^3_{1j}*Speed\_\textit{T-1}_{ij} + \beta^3_{2j}*Speed\_of\_Environment\_\textit{T-1}_{ij} + \beta^3_{3j}*Controls_{ij} + \epsilon^{\beta^3}_{ij}
 $$
-2nd level
+Second level
 
 $$
-\alpha_{0j} = \kappa_{00} + u_{0j} \\
-\alpha_{1j} = \kappa_{10} + u_{1j} \\
-\alpha_{2j} = \kappa_{20}  \\
-\beta_{nj} = \lambda_{n0}, \ for\ n ∈ \ {0,1,2} \\ 
-\gamma_{nj} = \delta_{n0},  \ for\ n ∈ \ {0,1,2}
+\beta^1_{0j} = \gamma^1_{00} + u_{0j} \\
+\beta^1_{1j} = \gamma^1_{10} + u_{1j} \\
+\beta^1_{2j} = \gamma^1_{20}  \\
+\beta^2_{nj} = \gamma^2_{n0}, \ for\ n ∈ \ {0,1,2} \\ 
+\beta^3_{nj} = \gamma^3_{n0},  \ for\ n ∈ \ {0,1,2}
 $$
 
-where an observation for the individual jockey at a quarter of a second $i$ (across all races) is nested within a jockey $j$;
+where an observation for the individual jockey at a quarter of a second $i$ (across all races) is nested within a jockey $j$, superscripts indicate a model number;
 
 $\alpha, \beta, \gamma$ with subscripts are regression parameter estimates with $\kappa, \lambda, \delta$ being their jockey-level intercepts;
 
