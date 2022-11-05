@@ -1,0 +1,42 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+1st level
+
+$$
+Positional \_ Improvement\_\textit{T+1}_{ij} = 
+\alpha_{0j} + \alpha_{1j}*Speed\_\textit{T}_{ij} + \alpha_{2j}*Speed\_of\_Environment \_ \textit{T}_{ij} + \epsilon^\alpha_{ij}
+$$
+
+$$
+Speed\_{T}_{ij} = \beta_{0j} + \beta_{1j}*Speed\_\textit{T-1}_{ij} + \beta_{2j}*Speed\_of\_Environment\_\textit{T-1}_{ij} + \epsilon^\beta_{ij}
+$$
+
+
+$$
+Speed\_of\_Environment_\_{T}_{ij} = \gamma_{0j} + \gamma_{1j}*Speed\_\textit{T-1}_{ij} + \gamma_{2j}*Speed\_of\_Environment\_\textit{T-1}_{ij} + \epsilon^\gamma_{ij}
+$$
+2nd level
+
+$$
+\alpha_{0j} = \kappa_{00} + u_{0j} \\
+\alpha_{1j} = \kappa_{10} + u_{1j} \\
+\alpha_{2j} = \kappa_{20}  \\
+\beta_{nj} = \lambda_{n0}, \ for\ n ∈ \ {0,1,2} \\ 
+\gamma_{nj} = \delta_{n0},  \ for\ n ∈ \ {0,1,2}
+$$
+
+where an observation for the individual jockey at a quarter of a second $i$ (across all races) is nested within a jockey $j$;
+
+$\alpha, \beta, \gamma$ with subscripts are regression parameter estimates with $\kappa, \lambda, \delta$ being their jockey-level intercepts;
+
+$u_{0j}$ and $u_{1j}$ are random intercept and slope parameters respectively for the impact of jockeys'/horses' speed on the performance outcome;
+
+$\epsilon$ is a normally distributed error term.
+
+
+
