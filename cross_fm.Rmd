@@ -1,0 +1,29 @@
+---
+output: html_notebook
+---
+
+First level
+
+$$
+Place\_at\_ Finish_{ijh} = 
+\beta_{0jh} + \beta_{cjh}*Cluster\_Membership_{ijh} + \beta_{njh}*Controls_{ijh} + \epsilon_{ijh}
+$$
+
+Second level
+
+$$
+\beta_{0jh} = \gamma_{000} + u_{0j0} + s_{00h} \\
+\beta_{cjh} = \gamma_{c00} + u_{cj0}, \ for\ c ∈ \ {1,2,3}
+
+$$
+
+where an observation $i$ is nested within a jockey $j$ and horse $h$, s is a number of cluster memberships minus one (the reference group), n is a number of control variables;
+
+all betas are regression parameter estimates with gammas being their jockey- and horse-level intercepts;
+
+$u_{0j0}$, $s_{00h}$ are random intercepts by jockeys and horses respectively;
+
+$u_{cj0}$ is a random slope by jockeys for the effect of trajectory clusters on the final place in a race.
+
+$\epsilon$ is a normally distributed error term.
+
